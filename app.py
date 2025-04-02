@@ -18,17 +18,20 @@ SESSION_STRING = os.environ.get('SESSION_STRING')
 if not all([API_HASH, BOT_USERNAME, LICENSE_KEY, SESSION_STRING]):
     raise ValueError("One or more required environment variables (API_HASH, BOT_USERNAME, LICENSE_KEY, SESSION_STRING) are missing.")
 
-def verify_license():
-    while True:
-        license_input = input('Please enter your license key: ')
-        if license_input == LICENSE_KEY:
-            print('License verified successfully.')
-            return True
-        else:
-            print('Invalid license key. Please try again.')
+def verify_license(provided_license):
+    """
+    Non-interactive license verification.
+    Compare the provided license with the LICENSE_KEY environment variable.
+    """
+    if provided_license == LICENSE_KEY:
+        print('License verified successfully.')
+        return True
+    else:
+        print('Invalid license key.')
+        return False
 
 def send_message_to_telegram():
-    # Use the session string
+    # Use the session string for authentication
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     client.start()
 
@@ -46,8 +49,11 @@ def save_log():
     print('Log file generated successfully.')
 
 def main():
-    # We don't need to check telegram-desktop installation in a server environment
-    if verify_license():
+    # In a non-interactive environment, you should get the license key from another source.
+    # For demonstration, we assume the provided license is the same as the environment variable.
+    provided_license = LICENSE_KEY  # Replace this with the actual license input in a web request if needed.
+
+    if verify_license(provided_license):
         send_message_to_telegram()
         time.sleep(5)  # Waiting for a response from the Telegram bot
         save_log()
