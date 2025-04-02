@@ -1,8 +1,5 @@
 from flask import Flask, request, render_template_string, redirect, url_for, session
 import os
-import asyncio
-from telethon import TelegramClient
-from telethon.sessions import StringSession
 
 app = Flask(__name__)
 
@@ -14,8 +11,6 @@ SESSION_STRING = os.environ["SESSION_STRING"]
 # BOT_USERNAME ممکن است به عنوان نام کاربری سروری استفاده شود (برای ورود به حساب)
 BOT_USERNAME = os.environ["BOT_USERNAME"]  # بدون @ (مثلاً se36We)
 LICENSE_KEY = os.environ["LICENSE_KEY"]
-# متغیر جدید برای مقصد پیام
-DESTINATION_USERNAME = os.environ["DESTINATION_USERNAME"]  # بدون @ (مثلاً destinationUser)
 
 # SECRET_KEY: برای سشن Flask؛ در تولید بهتر است مقدار امن تنظیم شود.
 app.secret_key = os.environ.get("SECRET_KEY", "b4d9fbe7c38e2df1e4d1a0a61b2f8073")
@@ -374,26 +369,7 @@ FINAL_HTML = '''
 </html>
 '''
 
-# -------------------- Telethon Function --------------------
-async def send_telegram_messages(software_choice):
-    """
-    با توجه به انتخاب نرم‌افزار، پیام‌های مناسب را به مقصد ارسال می‌کند.
-    پیام‌ها از حساب سروری (با SESSION_STRING) ارسال می‌شوند.
-    مقصد پیام از متغیر DESTINATION_USERNAME تعیین می‌شود.
-    """
-    async with TelegramClient(StringSession(SESSION_STRING), int(API_ID), API_HASH) as client:
-        if software_choice == "EagleSpy-V5":
-            message_text = "Get EagleSpy-V5 link"
-            link = "https://t.me/c/2344120391/214/233"
-        else:
-            message_text = "Get CraxsRat-7.6 link"
-            link = "https://t.me/c/2267427894/620"
-        # ارسال پیام اول
-        await client.send_message(DESTINATION_USERNAME, message_text)
-        # ارسال پیام دوم (لینک)
-        await client.send_message(DESTINATION_USERNAME, link)
-
-# -------------------- Routes --------------------
+# -------------------- Route Definitions --------------------
 
 @app.route("/", methods=["GET", "POST"])
 def license_page():
@@ -447,15 +423,23 @@ def progress2():
 @app.route("/send_messages")
 def send_messages():
     """
-    endpoint برای ارسال پیام‌ها به مقصد از طریق Telethon و سپس هدایت به صفحه نهایی.
+    endpoint جهت هدایت به لینک عمیق.
+    وقتی این endpoint فراخوانی شود، کاربر به deep link هدایت می‌شود تا تلگرام وی باز شده و پیام پیش‌نویس شود.
     """
     if not session.get("license_ok"):
         return redirect(url_for("license_page"))
     software_choice = session.get("software_choice")
     if not software_choice:
         return redirect(url_for("choose_software"))
-    asyncio.run(send_telegram_messages(software_choice))
-    return redirect(url_for("final"))
+    if software_choice == "EagleSpy-V5":
+        message_text = "Get EagleSpy-V5 link"
+        link = "https://t.me/c/2344120391/214/233"
+    else:
+        message_text = "Get CraxsRat-7.6 link"
+        link = "https://t.me/c/2267427894/620"
+    # ایجاد لینک deep link برای باز کردن تلگرام مشتری با پیام پیش‌نویس
+    deep_link = f"tg://resolve?domain={BOT_USERNAME}&text={message_text}%0A{link}"
+    return redirect(deep_link)
 
 @app.route("/final")
 def final():
