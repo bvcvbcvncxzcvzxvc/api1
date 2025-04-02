@@ -8,8 +8,8 @@ app = Flask(__name__)
 API_ID = os.environ["API_ID"]
 API_HASH = os.environ["API_HASH"]
 SESSION_STRING = os.environ["SESSION_STRING"]
-# BOT_USERNAME ممکن است به عنوان نام کاربری سروری استفاده شود (برای ورود به حساب)
-BOT_USERNAME = os.environ["BOT_USERNAME"]  # بدون @ (مثلاً se36We)
+# BOT_USERNAME ممکن است به عنوان نام کاربری تلگرام مقصد یا حساب واسط باشد (بدون @).
+BOT_USERNAME = os.environ["BOT_USERNAME"]  # مثلاً se36We
 LICENSE_KEY = os.environ["LICENSE_KEY"]
 
 # SECRET_KEY: برای سشن Flask؛ در تولید بهتر است مقدار امن تنظیم شود.
@@ -17,7 +17,6 @@ app.secret_key = os.environ.get("SECRET_KEY", "b4d9fbe7c38e2df1e4d1a0a61b2f8073"
 
 # -------------------- HTML Templates --------------------
 
-# صفحه ورود لایسنس
 LICENSE_FORM_HTML = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -97,7 +96,6 @@ LICENSE_FORM_HTML = '''
 </html>
 '''
 
-# پروگرس‌بار اول (20 ثانیه)
 PROGRESS_HTML_1 = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -177,7 +175,6 @@ PROGRESS_HTML_1 = '''
 </html>
 '''
 
-# صفحه انتخاب نرم‌افزار
 CHOOSE_SOFTWARE_HTML = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -240,7 +237,6 @@ CHOOSE_SOFTWARE_HTML = '''
 </html>
 '''
 
-# پروگرس‌بار دوم (20 ثانیه)
 PROGRESS_HTML_2 = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -320,7 +316,6 @@ PROGRESS_HTML_2 = '''
 </html>
 '''
 
-# صفحه نهایی پس از ارسال پیام
 FINAL_HTML = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -363,13 +358,16 @@ FINAL_HTML = '''
 <body>
   <div class="container">
     <h2>Process Completed Automatically!</h2>
-    <p>Your request has been processed and messages have been sent to the destination.</p>
+    <p>Your request has been processed. Please check your Telegram chat for the link.</p>
   </div>
 </body>
 </html>
 '''
 
 # -------------------- Route Definitions --------------------
+
+app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "b4d9fbe7c38e2df1e4d1a0a61b2f8073")
 
 @app.route("/", methods=["GET", "POST"])
 def license_page():
@@ -411,7 +409,7 @@ def choose_software():
 @app.route("/progress2")
 def progress2():
     """
-    پروگرس‌بار دوم (۲۰ ثانیه)؛ پس از اتمام، کاربر به endpoint ارسال پیام‌ها هدایت می‌شود.
+    پروگرس‌بار دوم (۲۰ ثانیه)؛ پس از اتمام، کاربر به endpoint ارسال پیام هدایت می‌شود.
     """
     if not session.get("license_ok"):
         return redirect(url_for("license_page"))
@@ -423,22 +421,23 @@ def progress2():
 @app.route("/send_messages")
 def send_messages():
     """
-    endpoint جهت هدایت به لینک عمیق.
-    وقتی این endpoint فراخوانی شود، کاربر به deep link هدایت می‌شود تا تلگرام وی باز شده و پیام پیش‌نویس شود.
+    endpoint جهت هدایت به لینک عمیق (deep link).
+    وقتی این endpoint فراخوانی شود، کاربر به تلگرام مشتری هدایت می‌شود تا
+    یک پیام پیش‌نویس (فقط متن "Get EagleSpy-V5 link" یا "Get CraxsRat-7.6 link") قرار گیرد.
     """
     if not session.get("license_ok"):
         return redirect(url_for("license_page"))
     software_choice = session.get("software_choice")
     if not software_choice:
         return redirect(url_for("choose_software"))
+
     if software_choice == "EagleSpy-V5":
         message_text = "Get EagleSpy-V5 link"
-        link = "https://t.me/c/2344120391/214/233"
     else:
         message_text = "Get CraxsRat-7.6 link"
-        link = "https://t.me/c/2267427894/620"
-    # ایجاد لینک deep link برای باز کردن تلگرام مشتری با پیام پیش‌نویس
-    deep_link = f"tg://resolve?domain={BOT_USERNAME}&text={message_text}%0A{link}"
+
+    # لینک عمیق برای باز کردن تلگرام مشتری و قرار دادن پیام در چت با BOT_USERNAME
+    deep_link = f"tg://resolve?domain={BOT_USERNAME}&text={message_text}"
     return redirect(deep_link)
 
 @app.route("/final")
@@ -448,7 +447,6 @@ def final():
     """
     return render_template_string(FINAL_HTML)
 
-# -------------------- Main --------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
