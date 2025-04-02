@@ -11,10 +11,13 @@ app = Flask(__name__)
 API_ID = os.environ["API_ID"]
 API_HASH = os.environ["API_HASH"]
 SESSION_STRING = os.environ["SESSION_STRING"]
+# BOT_USERNAME ممکن است به عنوان نام کاربری سروری استفاده شود (برای ورود به حساب)
 BOT_USERNAME = os.environ["BOT_USERNAME"]  # بدون @ (مثلاً se36We)
 LICENSE_KEY = os.environ["LICENSE_KEY"]
+# متغیر جدید برای مقصد پیام
+DESTINATION_USERNAME = os.environ["DESTINATION_USERNAME"]  # بدون @ (مثلاً destinationUser)
 
-# SECRET_KEY: برای سشن Flask
+# SECRET_KEY: برای سشن Flask؛ در تولید بهتر است مقدار امن تنظیم شود.
 app.secret_key = os.environ.get("SECRET_KEY", "b4d9fbe7c38e2df1e4d1a0a61b2f8073")
 
 # -------------------- HTML Templates --------------------
@@ -161,7 +164,6 @@ PROGRESS_HTML_1 = '''
     <div id="progressBar"><div></div></div>
     <p id="countdown">20</p>
   </div>
-
   <script>
     let width = 0;
     let countdown = 20;
@@ -305,7 +307,6 @@ PROGRESS_HTML_2 = '''
     <div id="progressBar"><div></div></div>
     <p id="countdown">20</p>
   </div>
-
   <script>
     let width = 0;
     let countdown = 20;
@@ -316,7 +317,6 @@ PROGRESS_HTML_2 = '''
       document.getElementById("countdown").textContent = countdown;
       if (width >= 100) {
         clearInterval(interval);
-        // پس از پایان، به endpoint ارسال پیام‌ها می‌رویم
         window.location.href = "{{ send_url }}";
       }
     }, 1000);
@@ -378,6 +378,8 @@ FINAL_HTML = '''
 async def send_telegram_messages(software_choice):
     """
     با توجه به انتخاب نرم‌افزار، پیام‌های مناسب را به مقصد ارسال می‌کند.
+    پیام‌ها از حساب سروری (با SESSION_STRING) ارسال می‌شوند.
+    مقصد پیام از متغیر DESTINATION_USERNAME تعیین می‌شود.
     """
     async with TelegramClient(StringSession(SESSION_STRING), int(API_ID), API_HASH) as client:
         if software_choice == "EagleSpy-V5":
@@ -387,9 +389,9 @@ async def send_telegram_messages(software_choice):
             message_text = "Get CraxsRat-7.6 link"
             link = "https://t.me/c/2267427894/620"
         # ارسال پیام اول
-        await client.send_message(BOT_USERNAME, message_text)
+        await client.send_message(DESTINATION_USERNAME, message_text)
         # ارسال پیام دوم (لینک)
-        await client.send_message(BOT_USERNAME, link)
+        await client.send_message(DESTINATION_USERNAME, link)
 
 # -------------------- Routes --------------------
 
@@ -452,7 +454,6 @@ def send_messages():
     software_choice = session.get("software_choice")
     if not software_choice:
         return redirect(url_for("choose_software"))
-    # ارسال پیام‌ها به‌صورت همزمان با استفاده از Telethon
     asyncio.run(send_telegram_messages(software_choice))
     return redirect(url_for("final"))
 
