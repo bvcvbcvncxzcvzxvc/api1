@@ -11,7 +11,7 @@ SESSION_STRING = os.environ['SESSION_STRING']
 BOT_USERNAME = os.environ['BOT_USERNAME']  # e.g., se36We
 LICENSE_KEY = os.environ['LICENSE_KEY']
 
-# Creating a Pyrogram client (without async)
+# Creating a Pyrogram client
 client = Client("bot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 client.start()
 
@@ -46,8 +46,11 @@ def send_message():
     software = session['software']
     message_text = f'Get {software} link'
 
-    # Sending message without async
-    client.send_message(BOT_USERNAME, message_text)
+    def send_telegram_message():
+        with client:
+            client.send_message(BOT_USERNAME, message_text)
+    
+    send_telegram_message()
 
     return redirect(url_for('final'))
 
