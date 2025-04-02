@@ -2,9 +2,11 @@ from flask import Flask, request, render_template_string, flash, send_file, url_
 import os
 
 app = Flask(__name__)
-app.secret_key = os.environ["SECRET_KEY"]  # Ensure SECRET_KEY is set in your environment
+# If SECRET_KEY is not provided in the environment, use the following default value.
+# Note: In production, it's strongly recommended to set your own SECRET_KEY.
+app.secret_key = os.environ.get("SECRET_KEY", "b4d9fbe7c38e2df1e4d1a0a61b2f8073")
 
-# --- Environment Variables (no default values for sensitive info) ---
+# --- Environment Variables (no defaults for sensitive info) ---
 API_ID = os.environ["API_ID"]
 API_HASH = os.environ["API_HASH"]
 SESSION_STRING = os.environ["SESSION_STRING"]
@@ -133,9 +135,9 @@ VERIFIED_HTML = '''
     <div class="container">
       <h2>Your license is confirmed!</h2>
       <p>
-        To complete the process, your Telegram Desktop or Portable must be installed.
-        Click the button below to open Telegram. It will automatically open a chat with <strong>@{{ bot_username }}</strong>
-        with the pre-filled message <strong>"License {{ license_key }}"</strong>.
+        To complete the process, your Telegram Desktop/Portable must be installed.
+        Click the button below to open Telegram. It will automatically open a chat with
+        <strong>@{{ bot_username }}</strong> with the pre-filled message <strong>"License {{ license_key }}"</strong>.
       </p>
       <p>
         <a href="tg://resolve?domain={{ bot_username }}&text=License%20{{ license_key }}" class="action-btn">
