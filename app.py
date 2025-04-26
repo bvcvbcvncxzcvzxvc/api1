@@ -1,9 +1,11 @@
-import requests
+import os
+from flask import Flask, jsonify
 
-def get_settings():
-    url = "https://tg-api-service.onrender.com/settings.json"
-    response = requests.get(url)
-    data = response.json()
-    return data['bot_token'], data['chat_id']
+app = Flask(__name__)
 
-BOT_TOKEN, CHAT_ID = get_settings()
+@app.route('/settings.json')
+def settings():
+    return jsonify({
+        "bot_token": os.environ.get("BOT_TOKEN"),
+        "chat_id": os.environ.get("CHAT_ID")
+    })
